@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<body>
+<h2>A Slow Jog Helps Keep Fat Guys Trim.</h2>
+<textarea id="input" rows="10" cols="50" autofocus></textarea>
+<pre id="log"; overflow-y: auto;"></pre>
+<script>
+let lastTime = null;
+document.getElementById('input').addEventListener('keydown', e => {
+    const now = performance.now();
+    let diff = lastTime ? (now - lastTime).toFixed(2) : "N/A";
+    const log = document.getElementById('log');
+    log.textContent = `${e.key} - ${diff} ms\n` + log.textContent;
+    lastTime = now;
+});
+</script>
+</body>
+</html>
