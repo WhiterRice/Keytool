@@ -52,7 +52,28 @@
 </div>
 <script>
 const DICTS={
-  apl:["⍳10","+/⍳100","⍴⍳6","(⍳10)×2","⌽⍳5","⍉3 4⍴⍳12","((⍳5)×2)+3","↑⍳5","↓⍳5","⍋7 2 5"],
+  apl:[
+  "⍳10", // First 10 integers
+  "+/⍳100", // Sum of integers from 1 to 100
+  "⍴⍳6", // Reshape first 6 integers into default shape
+  "(⍳10)×2", // Double each of the first 10 integers
+  "⌽⍳5", // Reverse a vector
+  "⍉3 4⍴⍳12", // Transpose a 3×4 matrix
+  "((⍳5)×2)+3", // Multiply by 2 then add 3
+  "↑⍳5", // Take the first element(s)
+  "↓⍳5", // Drop the first element(s)
+  "⍋7 2 5", // Grade up (indices to sort ascending)
+  "⍒7 2 5", // Grade down (indices to sort descending)
+  "(⍳5)∘.+⍳5", // Outer addition table
+  "(⍳5)∘.×⍳5", // Outer multiplication table
+  "⌈/3 7 2 9", // Maximum value
+  "⌊/3 7 2 9", // Minimum value
+  "(+/⍳100)÷100", // Average of integers 1 to 100
+  "⍟2", // Natural log of 2
+  "*2", // e squared
+  "≠\'MISSISSIPPI'", // Runs of unique letters
+  "(⊂⍵)⌷'APL'", // Indexing into a nested array
+  ],
   words:[
     "slow is smooth and smooth is fast",
     "measure twice cut once",
