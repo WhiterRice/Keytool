@@ -16,8 +16,8 @@
   select{background:#000;color:#0f0;border:1px solid #0a0;padding:4px;border-radius:4px}
   .keyboard{display:flex;flex-direction:column;gap:4px;margin-top:12px;padding:8px}
   .kb-row{display:grid;gap:4px;grid-auto-rows:40px}
-  .key{background:#041;border:1px solid #0a0;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#0f0;font-size:14px;text-align:center;line-height:1.2}
-  .key.pressed{background:#0f0;color:#000}
+  .key{background:#041;border:1px solid #0a0;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#0f0;font-size:14px;text-align:center;line-height:1.2;user-select:none}
+  .key.pressed{background:#0f0;color:#000;box-shadow:0 0 0 2px #0f0 inset}
   .log{max-height:200px;overflow:auto;margin-top:12px;padding:4px}
   table{width:100%;border-collapse:collapse}
   th,td{padding:6px 8px;border-bottom:1px solid #060;font-size:13px;color:#0f0}
@@ -66,6 +66,7 @@ const DICTS={
   numbers:["12345","314159","271828","1010 111 1001"]
 };
 
+// For IME-like APL entry when user presses Shift+key in the input
 const aplShiftMap = {
   '`':'⋄','1':'¨','2':'¯','3':'<','4':'≤','5':'=','6':'≥','7':'>','8':'≠','9':'∨','0':'∧','-':'×','=':'÷',
   'q':'?','w':'⍵','e':'∊','r':'⍴','t':'⍨','y':'↑','u':'↓','i':'⍳','o':'○','p':'*','[':'←',']':'→','\\':'⊣',
@@ -128,12 +129,6 @@ typed.addEventListener('keydown',(e)=>{
     pickPrompt();
     return;
   }
-  // Shifted APL symbol input per Dyalog mapping
-  if(e.shiftKey && APL_SHIFT[e.code]){
-    e.preventDefault();
-    insertAtCursor(typed, APL_SHIFT[e.code]);
-    return;
-  }
 });
 
 document.getElementById('dict').addEventListener('change',pickPrompt);
@@ -145,13 +140,21 @@ function updateStats(){
   stats.textContent=`WPM: ${wpm.toFixed(1)} | Accuracy: ${accuracy.toFixed(1)}%`;
 }
 
-// Shift → APL symbol mapping (US layout codes)
+// Also allow Shift+<key> APL symbol input using physical key codes (independent of layout)
 const APL_SHIFT = {
   Backquote:'⌺', Digit1:'⌶', Digit2:'⍫', Digit3:'⍒', Digit4:'⍋', Digit5:'⌽', Digit6:'⍉', Digit7:'⊖', Digit8:'⍟', Digit9:'⍱', Digit0:'⍲', Minus:'!', Equal:'⌹',
   KeyQ:'?', KeyW:'⍵', KeyE:'∊', KeyR:'⍴', KeyT:'⍨', KeyY:'↑', KeyU:'↓', KeyI:'⍳', KeyO:'○', KeyP:'*', BracketLeft:'←', BracketRight:'→', Backslash:'⊣',
   KeyA:'⍺', KeyS:'⌈', KeyD:'⌊', KeyF:'_', KeyG:'∇', KeyH:'∆', KeyJ:'∘', KeyK:"'", KeyL:'⎕', Semicolon:'≡', Quote:'⍕',
   KeyZ:'⊂', KeyX:'⊃', KeyC:'∩', KeyV:'∪', KeyB:'⊥', KeyN:'⊤', KeyM:'|', Comma:'⍝', Period:'⍙', Slash:'⍠'
 };
+
+typed.addEventListener('keydown',(e)=>{
+  if(e.shiftKey && APL_SHIFT[e.code]){
+    e.preventDefault();
+    insertAtCursor(typed, APL_SHIFT[e.code]);
+  }
+});
+
 function insertAtCursor(input, text){
   const start = input.selectionStart ?? input.value.length;
   const end = input.selectionEnd ?? input.value.length;
@@ -163,6 +166,46 @@ function insertAtCursor(input, text){
   input.dispatchEvent(new Event('input', {bubbles:true}));
 }
 
+// --- Keyboard rendering + highlight by e.code (physical key) ---
+// Map from code => array of key elements (e.g., both Shifts)
+const CODE_TO_ELEMS = new Map();
+function labelToCode(label){
+  // single-character keys
+  if(label.length===1){
+    const ch=label;
+    if(/[a-z]/i.test(ch)) return 'Key'+ch.toUpperCase();
+    if(/[0-9]/.test(ch)) return 'Digit'+ch;
+    switch(ch){
+      case '-': return 'Minus';
+      case '=': return 'Equal';
+      case '[': return 'BracketLeft';
+      case ']': return 'BracketRight';
+      case '\\': return 'Backslash';
+      case ';': return 'Semicolon';
+      case '\'': return 'Quote';
+      case ',': return 'Comma';
+      case '.': return 'Period';
+      case '/': return 'Slash';
+      case '`': return 'Backquote';
+    }
+  }
+  // named keys
+  switch(label){
+    case 'Backspace': return 'Backspace';
+    case 'Tab': return 'Tab';
+    case 'Caps': return 'CapsLock';
+    case 'Enter': return 'Enter';
+    case 'Shift': return 'Shift';
+    case 'Ctrl': return 'Control';
+    case 'Alt': return 'Alt';
+    case 'Win': return 'Meta';
+    case 'Menu': return 'ContextMenu';
+    case 'Space': return 'Space';
+    case 'AltGr': return 'AltGraph';
+    default: return null;
+  }
+}
+
 const kb=document.getElementById('keyboard');
 layout.forEach(row=>{
   const r=document.createElement('div');
@@ -172,28 +215,34 @@ layout.forEach(row=>{
     const k=document.createElement('div');
     k.className='key';
     k.innerHTML=klabel.replace(/ /g,'<br>');
+    const primary = klabel.split(' ')[0]; // e.g., "q" from "q ?"
+    const code = labelToCode(primary);
+    if(code){
+      k.dataset.code=code;
+      if(!CODE_TO_ELEMS.has(code)) CODE_TO_ELEMS.set(code,[]);
+      CODE_TO_ELEMS.get(code).push(k);
+    }
     r.appendChild(k);
   });
   kb.appendChild(r);
 });
 
+function highlightByCode(code,on){
+  // normalize left/right variants to the generic label used on the legend
+  const generic = code.replace(/(Left|Right)$/,'');
+  const elems = CODE_TO_ELEMS.get(generic) || CODE_TO_ELEMS.get(code) || [];
+  elems.forEach(el=>el.classList.toggle('pressed',on));
+}
+
 const logBody=document.getElementById('logBody');
 let counter=0; const downTimes=new Map();
 function mods(e){const m=[]; if(e.getModifierState&&e.getModifierState('CapsLock')) m.push('Caps'); if(e.shiftKey)m.push('Shift'); if(e.ctrlKey)m.push('Ctrl'); if(e.altKey)m.push('Alt'); if(e.metaKey)m.push('Meta'); return m.join('+')||'—';}
-
-function highlight(code,on){
-  document.querySelectorAll('.key').forEach(k=>{
-    if(k.textContent.split('\n')[0].toUpperCase()===code.replace('Key','').replace('Digit','').toUpperCase()){
-      k.classList.toggle('pressed',on);
-    }
-  });
-}
 
 document.addEventListener('keydown',e=>{
   if(!downTimes.has(e.code)){
     downTimes.set(e.code,performance.now());
   }
-  highlight(e.key,true);
+  highlightByCode(e.code,true);
 });
 
 document.addEventListener('keyup',e=>{
@@ -206,7 +255,7 @@ document.addEventListener('keyup',e=>{
     logBody.prepend(tr);
     downTimes.delete(e.code);
   }
-  highlight(e.key,false);
+  highlightByCode(e.code,false);
 });
 
 pickPrompt();
