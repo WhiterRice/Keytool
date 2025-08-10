@@ -1,19 +1,215 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Typing Tutor – Phrases, Numbers, APL Idioms</title>
+<style>
+  body{margin:0;font-family:ui-monospace, monospace;background:#000;color:#0f0}
+  .container{max-width:1000px;margin:auto;padding:16px}
+  .target, .typed, .log, .keyboard, .stats {background:#000;border:1px solid #0a0;border-radius:8px}
+  .target{font-size:20px;padding:12px;margin-bottom:8px}
+  .typed{width:100%;padding:10px;font-size:18px;border-radius:6px;border:2px solid #0a0;color:#0f0}
+  .typed.mistake{border-color:#f00;background:#200}
+  .controls{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+  .hint{font-size:14px;color:#0f0;margin-bottom:8px}
+  select{background:#000;color:#0f0;border:1px solid #0a0;padding:4px;border-radius:4px}
+  .keyboard{display:flex;flex-direction:column;gap:4px;margin-top:12px;padding:8px}
+  .kb-row{display:grid;gap:4px;grid-auto-rows:40px}
+  .key{background:#041;border:1px solid #0a0;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#0f0;font-size:14px;text-align:center;line-height:1.2}
+  .key.pressed{background:#0f0;color:#000}
+  .log{max-height:200px;overflow:auto;margin-top:12px;padding:4px}
+  table{width:100%;border-collapse:collapse}
+  th,td{padding:6px 8px;border-bottom:1px solid #060;font-size:13px;color:#0f0}
+  thead th{position:sticky;top:0;background:#030}
+  .stats{margin-top:8px;font-size:14px;color:#0f0;padding:8px}
+</style>
+</head>
 <body>
-<h2>Tap Test: fast pals jog and rest glad</h2>
-<h2>Hold Test: A Slow Jog Helps Keep Fat Guys Trim.</h2>
-<textarea id="input" rows="10" cols="50" autofocus></textarea>
-<pre id="log"; overflow-y: auto;"></pre>
+<div class="container">
+  <div class="controls">
+    <label for="dict">Exercise type:</label>
+    <select id="dict">
+      <option value="apl">APL Idioms</option>
+      <option value="words">Phrases</option>
+      <option value="numbers">Numbers</option>
+    </select>
+  </div>
+  <div class="hint">Type the text shown below. Press Enter to advance to the next exercise.</div>
+  <div class="target" id="target">Select an exercise type to start</div>
+  <input id="typed" class="typed" autocomplete="off" placeholder="Type here…" />
+
+  <div class="keyboard" id="keyboard"></div>
+
+  <div class="stats" id="stats">WPM: 0 | Accuracy: 100%</div>
+
+  <div class="log">
+    <table>
+      <thead><tr><th>#</th><th>Key</th><th>Code</th><th>Down</th><th>Up</th><th>Duration (ms)</th><th>Mods</th><th>Repeat</th></tr></thead>
+      <tbody id="logBody"></tbody>
+    </table>
+  </div>
+</div>
 <script>
-let lastTime = null;
-document.getElementById('input').addEventListener('keydown', e => {
-    const now = performance.now();
-    let diff = lastTime ? (now - lastTime).toFixed(2) : "N/A";
-    const log = document.getElementById('log');
-    log.textContent = `${e.key} - ${diff} ms\n` + log.textContent;
-    lastTime = now;
+const DICTS={
+  apl:["⍳10","+/⍳100","⍴⍳6","(⍳10)×2","⌽⍳5","⍉3 4⍴⍳12","((⍳5)×2)+3","↑⍳5","↓⍳5","⍋7 2 5"],
+  words:[
+    "slow is smooth and smooth is fast",
+    "measure twice cut once",
+    "practice makes permanent",
+    "haste makes waste",
+    "precision beats speed",
+    "fast is fine but accuracy is final",
+    "move slow to move fast",
+    "quality over quantity"
+  ],
+  numbers:["12345","314159","271828","1010 111 1001"]
+};
+
+const aplShiftMap = {
+  '`':'⋄','1':'¨','2':'¯','3':'<','4':'≤','5':'=','6':'≥','7':'>','8':'≠','9':'∨','0':'∧','-':'×','=':'÷',
+  'q':'?','w':'⍵','e':'∊','r':'⍴','t':'⍨','y':'↑','u':'↓','i':'⍳','o':'○','p':'*','[':'←',']':'→','\\':'⊣',
+  'a':'⍺','s':'⌈','d':'⌊','f':'_','g':'∇','h':'∆','j':'∘','k':'\'','l':'⎕',';':'≡','\'':'⍕',
+  'z':'⊂','x':'⊃','c':'∩','v':'∪','b':'⊥','n':'⊤','m':'|',',':'⍝','.':'⍙','/':'⍠'
+};
+
+const layout=[
+  {keys:["` ⋄","1 ¨","2 ¯","3 <","4 ≤","5 =","6 ≥","7 >","8 ≠","9 ∨","0 ∧","- ×","= ÷","Backspace"],cols:[1,1,1,1,1,1,1,1,1,1,1,1,1,2]},
+  {keys:["Tab","q ?","w ⍵","e ∊","r ⍴","t ⍨","y ↑","u ↓","i ⍳","o ○","p *","[ ←","] →","\\ ⊣"],cols:[1.5,1,1,1,1,1,1,1,1,1,1,1,1,1.5]},
+  {keys:["Caps","a ⍺","s ⌈","d ⌊","f _","g ∇","h ∆","j ∘","k '","l ⎕","; ≡","' ⍕","Enter"],cols:[1.75,1,1,1,1,1,1,1,1,1,1,1,2.25]},
+  {keys:["Shift","z ⊂","x ⊃","c ∩","v ∪","b ⊥","n ⊤","m |",", ⍝",". ⍙","/ ⍠","Shift"],cols:[2.25,1,1,1,1,1,1,1,1,1,1,2.75]},
+  {keys:["Ctrl","Win","Alt","Space","AltGr","Win","Menu","Ctrl"],cols:[1.25,1.25,1.25,6.25,1.25,1.25,1.25,1.25]}
+];
+
+let current='',startTime=0,typedChars=0,errorCount=0;
+const target=document.getElementById('target');
+const typed=document.getElementById('typed');
+const stats=document.getElementById('stats');
+
+function pickPrompt(){
+  const arr=DICTS[document.getElementById('dict').value];
+  current=arr[Math.floor(Math.random()*arr.length)];
+  target.textContent=current;
+  typed.value='';
+  typed.classList.remove('mistake');
+  startTime=performance.now();
+  typedChars=0;
+  errorCount=0;
+}
+
+typed.addEventListener('beforeinput',(e)=>{
+  if(e.inputType==='insertText' && e.data && e.data.length===1 && e.getTargetRanges){
+    if(e.getModifierState && e.getModifierState('Shift')){
+      const lower = e.data.toLowerCase();
+      if(aplShiftMap[lower]){
+        e.preventDefault();
+        typed.value += aplShiftMap[lower];
+        return;
+      }
+    }
+  }
 });
+
+typed.addEventListener('input',()=>{
+  typedChars++;
+  if(!current.startsWith(typed.value)){
+    errorCount++;
+    typed.classList.add('mistake');
+  } else {
+    typed.classList.remove('mistake');
+  }
+  updateStats();
+});
+
+typed.addEventListener('keydown',(e)=>{
+  // Enter advances
+  if(e.key==='Enter'){
+    e.preventDefault();
+    pickPrompt();
+    return;
+  }
+  // Shifted APL symbol input per Dyalog mapping
+  if(e.shiftKey && APL_SHIFT[e.code]){
+    e.preventDefault();
+    insertAtCursor(typed, APL_SHIFT[e.code]);
+    return;
+  }
+});
+
+document.getElementById('dict').addEventListener('change',pickPrompt);
+
+function updateStats(){
+  const elapsedMin=(performance.now()-startTime)/60000;
+  const wpm=((typedChars/5)/elapsedMin)||0;
+  const accuracy=typedChars?100*((typedChars-errorCount)/typedChars):100;
+  stats.textContent=`WPM: ${wpm.toFixed(1)} | Accuracy: ${accuracy.toFixed(1)}%`;
+}
+
+// Shift → APL symbol mapping (US layout codes)
+const APL_SHIFT = {
+  Backquote:'⌺', Digit1:'⌶', Digit2:'⍫', Digit3:'⍒', Digit4:'⍋', Digit5:'⌽', Digit6:'⍉', Digit7:'⊖', Digit8:'⍟', Digit9:'⍱', Digit0:'⍲', Minus:'!', Equal:'⌹',
+  KeyQ:'?', KeyW:'⍵', KeyE:'∊', KeyR:'⍴', KeyT:'⍨', KeyY:'↑', KeyU:'↓', KeyI:'⍳', KeyO:'○', KeyP:'*', BracketLeft:'←', BracketRight:'→', Backslash:'⊣',
+  KeyA:'⍺', KeyS:'⌈', KeyD:'⌊', KeyF:'_', KeyG:'∇', KeyH:'∆', KeyJ:'∘', KeyK:"'", KeyL:'⎕', Semicolon:'≡', Quote:'⍕',
+  KeyZ:'⊂', KeyX:'⊃', KeyC:'∩', KeyV:'∪', KeyB:'⊥', KeyN:'⊤', KeyM:'|', Comma:'⍝', Period:'⍙', Slash:'⍠'
+};
+function insertAtCursor(input, text){
+  const start = input.selectionStart ?? input.value.length;
+  const end = input.selectionEnd ?? input.value.length;
+  const before = input.value.slice(0, start);
+  const after = input.value.slice(end);
+  input.value = before + text + after;
+  const caret = start + text.length;
+  input.setSelectionRange(caret, caret);
+  input.dispatchEvent(new Event('input', {bubbles:true}));
+}
+
+const kb=document.getElementById('keyboard');
+layout.forEach(row=>{
+  const r=document.createElement('div');
+  r.className='kb-row';
+  r.style.gridTemplateColumns=row.cols.map(c=>`${c}fr`).join(' ');
+  row.keys.forEach(klabel=>{
+    const k=document.createElement('div');
+    k.className='key';
+    k.innerHTML=klabel.replace(/ /g,'<br>');
+    r.appendChild(k);
+  });
+  kb.appendChild(r);
+});
+
+const logBody=document.getElementById('logBody');
+let counter=0; const downTimes=new Map();
+function mods(e){const m=[]; if(e.getModifierState&&e.getModifierState('CapsLock')) m.push('Caps'); if(e.shiftKey)m.push('Shift'); if(e.ctrlKey)m.push('Ctrl'); if(e.altKey)m.push('Alt'); if(e.metaKey)m.push('Meta'); return m.join('+')||'—';}
+
+function highlight(code,on){
+  document.querySelectorAll('.key').forEach(k=>{
+    if(k.textContent.split('\n')[0].toUpperCase()===code.replace('Key','').replace('Digit','').toUpperCase()){
+      k.classList.toggle('pressed',on);
+    }
+  });
+}
+
+document.addEventListener('keydown',e=>{
+  if(!downTimes.has(e.code)){
+    downTimes.set(e.code,performance.now());
+  }
+  highlight(e.key,true);
+});
+
+document.addEventListener('keyup',e=>{
+  const now=performance.now();
+  if(downTimes.has(e.code)){
+    const start=downTimes.get(e.code);
+    const tr=document.createElement('tr');
+    [++counter,e.key,e.code,new Date(performance.timeOrigin+start).toLocaleTimeString(),new Date(performance.timeOrigin+now).toLocaleTimeString(),(now-start).toFixed(0),mods(e),e.repeat?'yes':'no']
+      .forEach(v=>{const td=document.createElement('td'); td.textContent=v; tr.appendChild(td);});
+    logBody.prepend(tr);
+    downTimes.delete(e.code);
+  }
+  highlight(e.key,false);
+});
+
+pickPrompt();
 </script>
 </body>
 </html>
